@@ -1,5 +1,15 @@
 module ninepee.message;
 
+public static bool isRequest(MType type)
+{
+	return type % 2 == 0;
+}
+
+public static bool isReply(MType type)
+{
+	return !isRequest(type);
+}
+
 public enum MType : ubyte
 {
 	Tversion = 100,
@@ -33,6 +43,123 @@ public enum MType : ubyte
 }
 
 import niknaks.bits;
+
+public abstract class Message
+{
+	private MType type;
+	private Tag tag;
+
+	this(MType type)
+	{
+		this.type = type;
+	}
+	
+	public final MType getType()
+	{
+		return this.type;
+	}
+
+	public final ubyte[] encode()
+	{
+		ubyte[] o;
+
+		// firstly obtain the bytes AFTER tag[2]
+		// Obtain the encoded message (from AFTER tag[2] onwards)
+		ubyte[] sub = getPayload();
+		writeln("sub bytes below:");
+		version(DBG_ARR_DUMPS) { writeln(dumpArray!(sub)()); }
+		
+		// Calculate total length as size[4] type[1] tag[2] sub[sub.length]
+		uint len = cast(uint)(4+1+2+sub.length);
+		writeln(format("total 9p msg len is: %d bytes", len));
+
+		// take length ensure it is in LE ordering, then append
+		o ~= toBytes(order(len, Order.LE));
+
+		// tack on mtype
+		o ~= this.type;
+
+		// take tag ensure it is in LE ordering, then append
+		o ~= toBytes(order(this.tag, Order.LE));
+
+		// tack on the sub-message
+		o ~= sub;
+		
+		writeln(format("Byte output for (%s):\n%s", this, dumpArray!(o)));
+		
+		return [];
+	}
+	
+	public final Tag getTag()
+	{
+		return this.tag;
+	}
+
+	public final void setTag(Tag tag)
+	{
+		// TODO: Check tag value, there is this "NO_TAG" thing too
+		this.tag = tag;
+	}
+
+	// encodes the message part
+	public abstract ubyte[] getPayload();
+
+	public final size_t getPayloadSize()
+	{
+		return getPayload().length;
+	}
+}
+
+public class VersionMessage_V2 : Message
+{
+	// maximum message size allowed
+	private uint msize;
+
+	// protocol version to use
+	private string ver;
+
+	private this(MType type)
+	{
+		super(type);
+	}
+
+	// TODO: Return a Result rather as we need to ensure the incoming string is valid
+	public static VersionMessage_V2 makeRequest(uint msize, string ver)
+	{
+		VersionMessage_V2 mesg = new VersionMessage_V2(MType.Tversion);
+		mesg.msize = msize;
+		mesg.ver = ver;
+		return mesg;
+	}
+
+	public static VersionMessage_V2 makeReply(uint msize, string ver)
+	{
+		VersionMessage_V2 mesg = new VersionMessage_V2(MType.Rversion);
+		mesg.msize = msize;
+		mesg.ver = ver;
+		return mesg;
+	}
+
+	public override ubyte[] getPayload()
+	{
+		ubyte[] o;
+
+		// ensure LE ordering and tack on to byte array
+		o ~= toBytes(order(this.msize, Order.LE));
+
+		// add version
+		o ~= ver;
+
+		return o;
+	}
+}
+
+unittest
+{
+	Message msg = VersionMessage_V2.makeRequest(2000, "9P1000");
+
+	ubyte[] o = msg.encode();
+}
 
 public struct VersionMessage
 {
@@ -72,6 +199,39 @@ public struct VersionMessage
 
 		return o;
 	}
+}
+
+unittest
+{
+	struct Base
+	{
+		int kek=69;
+		int getAge()
+		{
+			return kek;
+		}
+	}
+
+	struct J
+	{
+		
+	}
+
+	J j = J();
+	Base* b = cast(Base*)(&j);
+
+	writeln(b.getAge());
+}
+
+// TODO: Use niknaks.result type rather?
+public bool decode(ref Message messageOut, ref string errOut)
+{
+	return true;
+}
+
+unittest
+{
+	
 }
 
 public struct D
