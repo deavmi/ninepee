@@ -1,0 +1,16 @@
+{
+	"authors": [
+		"Tristan B. Velloza Kildaire"
+	],
+	"copyright": "Copyright © 2024, Tristan B. Velloza Kildaire",
+	"dependencies": {
+		"gogga": "~>3.1.1",
+		"niknaks": "~>0.17.0"
+	},
+	"description": "9p state machine implementation and server framework for building your own servers",
+	"license": "LGPL 2.1",
+	"name": "9p",
+	"versions": [
+		"DBG_ARR_DUMPS"
+	]
+}

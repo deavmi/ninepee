@@ -1,0 +1,16 @@
+.dub
+docs.json
+__dummy.html
+docs/
+/9p
+9p.so
+9p.dylib
+9p.dll
+9p.a
+9p.lib
+9p-test-*
+*.exe
+*.pdb
+*.o
+*.obj
+*.lst
