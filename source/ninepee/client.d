@@ -116,15 +116,95 @@ private struct State
 		return this.hasSizeSet;
 	}
 
+	bool hasTypeSet = false;
+	ubyte typeByte;
+
+	public void setTypeByte(ubyte typeByte)
+	{
+		this.hasTypeSet = true;
+		this.typeByte = typeByte;
+	}
+	
+	public bool isTypeComplete()
+	{
+		return this.hasTypeSet;
+	}
+
+	public bool isDone()
+	{
+		return isSizeComplete && isTypeComplete();
+	}
 
 	public void reset()
 	{
 		this.hasSizeSet = false;
 		this.sizeBytes = [];
+
+		this.hasTypeSet = false;
+		this.typeByte = 0;
 	}
 }
 
 alias MessageHandler = void delegate(Message);
+
+public enum ParseStatus
+{
+	NEEDS_MORE_DATA,
+	OKAY,
+	BAD_MESSAGE
+}
+
+private union Obj
+{
+	size_t remaining;
+	Message message;
+	string protocolError;
+}
+
+public struct ParseResult
+{
+	private ParseStatus status;
+	private Obj obj;
+
+	@disable
+	this();
+
+	this(size_t remaining)
+	{
+		this.status = ParseStatus.NEEDS_MORE_DATA;
+		this.obj.remaining = remaining;
+	}
+
+	this(Message message)
+	{
+		this.status = ParseStatus.OKAY;
+		this.obj.message = message;
+	}
+
+	this(string protocolError)
+	{
+		this.status = ParseStatus.BAD_MESSAGE;
+		this.obj.protocolError = protocolError;
+	}
+
+	public ParseStatus getStatus()
+	{
+		return this.status;
+	}
+
+	// TODO: Do optionals here to prevent returning invalid results
+	public size_t getRemaining()
+	{
+		return this.obj.remaining;
+	}
+	
+	// TODO: Do optionals here to prevent returning invalid results
+	public Message getMessage()
+	{
+		return this.obj.message;
+	}
+	
+}
 
 public struct Client
 {
@@ -132,7 +212,6 @@ public struct Client
 	private Buff buff;
 	private State state;
 
-	private MessageHandler handler;
 
 	public size_t req(Message message)
 	{
@@ -144,8 +223,8 @@ public struct Client
 		// if `inBuff` empty, then clean slate
 		return 0;
 	}
-
-	public size_t recv(ubyte[] input)
+	
+	public ParseResult recv(ubyte[] input)
 	{
 		// insert available bytes
 		this.buff.tack(input);
@@ -166,7 +245,26 @@ public struct Client
 			// required
 			else
 			{
-				return rem;
+				return ParseResult(rem);
+			}
+		}
+
+		// do we have type fulfilled?
+		if(!state.isTypeComplete())
+		{
+			// try to get a single byte
+			ubyte[] o;
+			size_t rem = this.buff.tryGet(1, o);
+
+			// then we got 1 byte, and can set it
+			if(rem == 0)
+			{
+				this.state.setTypeByte(o[0]);
+			}
+			// else, not yet, return remaining bytes
+			else
+			{
+				return ParseResult(rem);
 			}
 		}
 
@@ -174,32 +272,31 @@ public struct Client
 
 		// TODO: Now take this.state and build message from it
 		Message msg;
-		bool s = buildMessage(this.state, msg); // TODO: handle status
-
-		// TODO: Dependent on said mesage handle it in different ways
-		handleMessage(msg);
+		string err;
+		parseMessage(this.state, msg, err); // TODO: handle result
 
 		// Reset all state now
 		reset();
 
-		return 0;
+		// TODO: We could actually make the user then call
+		// ... parse()? idk so this signals that you are
+		// ... done reading (from whatever your source is
+		// ... that is calling this method and filling it
+		// ... up with bytes) and we have state available
+		// ... for a message
+		return ParseResult(msg);
 		
 	}
 
-	// Handles the message, such as doing state,
-	// waking up something waiting perhaps
-	// etc.
-	private void handleMessage(Message msg)
+	// TODO: USe result type here when doing decode
+	// (TODO: not bool and message out, or string out)
+	private static bool parseMessage(State state, ref Message m_out, ref string e_out)
 	{
-		if(handler)
-		{
-			handler(msg);
-		}
-		else
-		{
-			writeln("handleMessage: No handler attached");
-		}
+		// always parse fine (TODO: not for ever)
+		buildMessage(state, m_out);
+		return true;
 	}
+
 
 	public void reset()
 	{
@@ -210,11 +307,6 @@ public struct Client
 		this.buff.reset();
 	}
 
-	// TODO: SHould be protected with mutex as delegate is multi-field
-	public void setHandler(MessageHandler handler)
-	{
-		this.handler = handler;
-	}
 }
 
 version(unittest)
@@ -231,15 +323,56 @@ unittest
 {
 	Client c;
 
-	c.setHandler(toDelegate(&handler));
-	
-	assert(c.recv([]) == 4);
-	assert(c.recv([0]) == 3);
-	assert(c.recv([1,0,0]) == 0);
+	// c.setHandler(toDelegate(&handler));
 
-	assert(c.recv([]) == 4);
-	assert(c.recv([255]) == 3);
-	assert(c.recv([0,0,0]) == 0);
+	// Push data in
+	ParseResult res = c.recv([]);
+	assert(res.getStatus() == ParseStatus.NEEDS_MORE_DATA);
+	assert(res.getRemaining() == 4);
+
+	res = c.recv([0]);
+	assert(res.getStatus() == ParseStatus.NEEDS_MORE_DATA);
+	assert(res.getRemaining() == 3);
+
+	res = c.recv([1,0,0]);
+	assert(res.getStatus() == ParseStatus.NEEDS_MORE_DATA);
+	assert(res.getRemaining() == 1);
+
+	res = c.recv([MType.Twrite]);
+	assert(res.getStatus() == ParseStatus.OKAY);
+
+	Message m_out = res.getMessage();
+	assert(!(m_out is null));
+	writeln(m_out);
+	handler(m_out);
+	// asser
+
+
+	// Push data in (again)
+	res = c.recv([]);
+	assert(res.getStatus() == ParseStatus.NEEDS_MORE_DATA);
+	assert(res.getRemaining() == 4);
+
+	res = c.recv([255]);
+	assert(res.getStatus() == ParseStatus.NEEDS_MORE_DATA);
+	assert(res.getRemaining() == 3);
+
+	res = c.recv([0,0,0]);
+	assert(res.getStatus() == ParseStatus.NEEDS_MORE_DATA);
+	assert(res.getRemaining() == 1);
+
+	res = c.recv([MType.Rwrite]);
+	assert(res.getStatus() == ParseStatus.OKAY);
+
+	m_out = res.getMessage();
+	assert(!(m_out is null));
+	writeln(m_out);
+	handler(m_out);
+
+	// assert(c.recv([]) == 4);
+	// assert(c.recv([255]) == 3);
+	// assert(c.recv([0,0,0]) == 1);
+	// assert(c.recv([MType.Rwrite]) == 0);
 
 	
 }
