@@ -32,6 +32,48 @@ public enum MType : ubyte
 	Rwstat = 127
 }
 
+import niknaks.bits;
+
+public struct VersionMessage
+{
+	// true if Tversion, false if Rversion
+	private bool isRequest;
+
+	// maximum message size allowed
+	private uint msize;
+
+	// protocol version to use
+	private string ver;
+
+	@disable
+	this();
+
+	this(uint msize, string ver, bool isRequest)
+	{
+		this.isRequest = isRequest;
+		this.msize = msize;
+		this.ver = ver;
+	}
+
+	public MType getType()
+	{
+		return isRequest ? MType.Tversion : MType.Rversion;
+	}
+
+	public ubyte[] getPayload()
+	{
+		ubyte[] o;
+
+		// ensure LE ordering and tack on to byte array
+		o ~= toBytes(order(this.msize, Order.LE));
+
+		// add version
+		o ~= ver;
+
+		return o;
+	}
+}
+
 public struct D
 {
 	// int encode;
@@ -52,23 +94,53 @@ import std.string : format;
 public void doEncode(MessageType)(MessageType message)
 if(isMessage!(MessageType)) // FIXME: Call isSerializable rather (TODO: Updte unittests then)
 {
-	// Obtain the encoded message (from tag[2] onwards)
-	ubyte[] sub = message.encode();
+	writeln(show(message));
+	
+	// Obtain the encoded message (from AFTER tag[2] onwards)
+	ubyte[] sub = message.getPayload();
 	writeln("sub bytes below:");
 	version(DBG_ARR_DUMPS) { writeln(dumpArray!(sub)()); }
 
-	// Calculate total length as size[4] type[1] sub[sub.length]
-	uint len = cast(uint)(4+1+sub.length);
+	// Calculate total length as size[4] type[1] tag[2] sub[sub.length]
+	uint len = cast(uint)(4+1+2+sub.length);
 	writeln(format("total 9p msg len is: %d bytes", len));
 }
+
+public string show(MessageType)(MessageType m)
+if(isSerializable!(MessageType))
+{
+	// TODO: show firts few bytes
+	ubyte[] payload = m.getPayload();
+	uint len = cast(uint)payload.length;
+
+	import std.conv : to;
+	return format
+	(
+		"9P Message [size: %d, type: %s, tag: %d]",
+		len, // TODO: Set to size getSize()
+		m.getType(),
+		m.getTag()
+	);
+}
+
+
+alias Tag = ushort;
 
 unittest
 {
 	struct Ting
 	{
+		Tag getTag()
+		{
+			return 69;
+		}
 		
+		MType getType()
+		{
+			return MType.Twrite;
+		}
 	
-		ubyte[] encode()
+		ubyte[] getPayload()
 		{
 			return [66, 65, 65, 66];
 		}
@@ -76,20 +148,22 @@ unittest
 
 	auto msg = Ting();
 	doEncode(msg);
+
+	writeln(msg);
 }
 
 import std.traits;
 
 public bool isMessage(MessageType)()
 {
-	// Needs to have a member named `encode`
-	if(!hasMember!(MessageType, "encode"))
+	// Needs to have a member named `getPayload`
+	if(!hasMember!(MessageType, "getPayload"))
 	{
 		return false;
 	}
 
 	// Alias for the encode symbol
-	alias member = __traits(getMember, MessageType, "encode");
+	alias member = __traits(getMember, MessageType, "getPayload");
 
 	// Ensure it is a function, has zero arity and has a `ubyte[]` return type
 	pragma(msg, isFunction!(member));
@@ -107,16 +181,34 @@ public bool isMessage(MessageType)()
 
 public bool isSerializable(MessageType)()
 {
-	return hasTagGet!(MessageType);
+	return hasTypeGet!(MessageType);
 }
 
-public bool hasTagGet(MessageType)()
+public bool hasTypeGet(MessageType)()
+{
+	// Alias for the `getType` symbol
+	alias member = __traits(getMember, MessageType, "getType");
+
+	// Is a function which takes no arguments and returns an MType
+	return isFunction!(member) && arity!(member) == 0 && __traits(isSame, MType, ReturnType!(member));
+}
+
+public bool hasPayloadGet(MessageType)()
+{
+	// Alias for the `getPayload` symbol
+	alias member = __traits(getMember, MessageType, "getPayload");
+
+	// Is a function which takes no arguments and returns a ubyte[]
+	return isFunction!(member) && arity!(member) == 0 && __traits(isSame, ubyte[], ReturnType!(member));	
+}
+
+public bool hasGetTag(MessageType)()
 {
 	// Alias for the `getTag` symbol
 	alias member = __traits(getMember, MessageType, "getTag");
 
-	// Is a function which takes no arguments and returns a ubyte
-	return isFunction!(member) && arity!(member) == 0 && __traits(isSame, ubyte, ReturnType!(member));
+	// Is a function which takes no arguments and returns a Tag
+	return isFunction!(member) && arity!(member) == 0 && __traits(isSame, Tag, ReturnType!(member));	
 }
 
 unittest
@@ -153,8 +245,9 @@ unittest
 		}
 	}
 	auto d = F_4();
-	static assert(__traits(compiles, doEncode(d)));
-	doEncode(d);
+	// FIXME: Move positive test cases ot unittes near the doEncode definition
+	// static assert(__traits(compiles, doEncode(d)));
+	// doEncode(d);
 }
 
 unittest
