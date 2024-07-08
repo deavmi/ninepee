@@ -27,7 +27,7 @@ unittest
 	);
 
 	writeln("Res: ", i.getStatus());
-	writeln("Res: ", i.getMessage());
+	writeln("Res LEKKEKR: ", i.getMessage());
 }
 
 unittest
@@ -36,7 +36,7 @@ unittest
 	serv.bind(parseAddress("127.0.0.1", 2227));
 	serv.listen(0);
 
-	
+	Tag tagToUse;
 
 	Socket client = serv.accept();
 
@@ -72,11 +72,20 @@ unittest
 
 	Message got = res.getMessage();
 	writeln("SOCKET RESULT: ", got);
+	// use this tag from here on out
+	tagToUse = got.getTag();
 
+	import core.thread;
+	Thread.sleep(dur!("seconds")(10));
+
+	VersionMessage_V2 openingMsg = cast(VersionMessage_V2)got;
 
 	// Send version reply?
-	Message back = VersionMessage_V2.makeReply(420, "9P2000.u");
+	Message back = VersionMessage_V2.makeReply(openingMsg.getMSize(), openingMsg.getVersion());
+	back.setTag(cast(Tag)-1);
 	client.send(back.encode());
+
+	
 
 	while(true)
 	{

@@ -1,5 +1,7 @@
 module ninepee.message;
 
+import std.conv : to;
+
 public static bool isRequest(MType type)
 {
 	return type % 2 == 0;
@@ -49,6 +51,14 @@ public enum MType : ubyte
 
 import niknaks.bits;
 
+alias Fid = uint;
+alias Afid = uint;
+
+public Fid NOFID = -1;
+
+// TODO: make unchangeable
+public Tag NOTAG = 1;
+
 public bool is_NOTAG(Tag tag)
 {
 	return cast(short)tag == -1;
@@ -57,6 +67,21 @@ public bool is_NOTAG(Tag tag)
 unittest
 {
 	assert(is_NOTAG(cast(Tag)-1));
+}
+
+public ubyte[] make9PString(string dString)
+{
+	// TODO: Add result type for error encoidng string greater than 65535 bytes in length
+	
+	ubyte[] o;
+
+	// Encode length
+	o ~= toBytes(order(cast(ushort)dString.length, Order.LE));
+	
+	// tack on the string itself
+	o ~= dString;
+	
+	return o;
 }
 
 public abstract class Message
@@ -102,7 +127,7 @@ public abstract class Message
 		
 		writeln(format("Byte output for (%s):\n%s", this, dumpArray!(o)));
 		
-		return [];
+		return o;
 	}
 	
 	public final Tag getTag()
@@ -123,6 +148,16 @@ public abstract class Message
 	{
 		return getPayload().length;
 	}
+
+	public override string toString()
+	{
+		return format
+		(
+			"9PMessage [type: %s, tag: %s]",
+			this.type,
+			is_NOTAG(this.tag) ? "NOTAG" : to!(string)(this.tag)
+		);
+	}
 }
 
 public class VersionMessage_V2 : Message
@@ -136,6 +171,16 @@ public class VersionMessage_V2 : Message
 	private this(MType type)
 	{
 		super(type);
+	}
+
+	public uint getMSize()
+	{
+		return this.msize;
+	}
+
+	public string getVersion()
+	{
+		return this.ver;
 	}
 
 	// TODO: Return a Result rather as we need to ensure the incoming string is valid
@@ -163,16 +208,17 @@ public class VersionMessage_V2 : Message
 		o ~= toBytes(order(this.msize, Order.LE));
 
 		// add version
-		o ~= ver;
+		o ~= make9PString(ver);
 
 		return o;
 	}
 
 	public override string toString()
 	{
+		string s;
 		if(getType() == MType.Tversion)
 		{
-			return format
+			s=format
 			(
 				"VersionRequest [msize: %d, verWanted: %s]",
 				this.msize,
@@ -181,13 +227,15 @@ public class VersionMessage_V2 : Message
 		}
 		else
 		{
-			return format
+			s=format
 			(
 				"VersionReply [msize: %d, verAble: %s]",
 				this.msize,
 				this.ver
 			);
 		}
+
+		return super.toString()~" "~s;
 	}
 }
 
@@ -196,6 +244,67 @@ unittest
 	Message msg = VersionMessage_V2.makeRequest(2000, "9P1000");
 
 	ubyte[] o = msg.encode();
+}
+
+public final class AttachMessage : Message
+{
+	// T: fid, afid
+	private uint fid, afid;
+	
+	// T: uname, aname
+	private string uname, aname;
+
+	// R: qid
+	private uint qid;
+
+	private this(MType type)
+	{
+		super(type);
+	}
+
+	public static AttachMessage makeRequest(uint fid, uint afid, string uname, string aname)
+	{
+		AttachMessage m = new AttachMessage(MType.Tattach);
+		m.fid = fid;
+		m.afid = afid;
+		m.uname = uname;
+		m.aname = aname;
+		return m;
+	}
+
+	public static AttachMessage makeReply(uint qid)
+	{
+		AttachMessage m = new AttachMessage(MType.Rattach);
+		m.qid = qid;
+		return m;	
+	}
+
+	public override ubyte[] getPayload()
+	{
+		ubyte[] o;
+
+		if(getType() == MType.Tattach)
+		{
+			// ensure LE ordering and tack on to byte array
+			o ~= toBytes(order(this.fid, Order.LE));
+			
+			// ensure LE ordering and tack on to byte array
+			o ~= toBytes(order(this.afid, Order.LE));
+						
+			// ensure LE ordering and tack on to byte array
+			o ~= make9PString(this.uname);
+			
+			// ensure LE ordering and tack on to byte array
+			o ~= make9PString(this.aname);
+		}
+		else
+		{
+			// ensure LE ordering and tack on to byte array
+			o ~= toBytes(order(this.qid, Order.LE));
+		}
+
+		return o;
+	}
 }
 
 public struct VersionMessage

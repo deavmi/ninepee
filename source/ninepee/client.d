@@ -69,6 +69,26 @@ private struct Buff
 
 import niknaks.bits;
 import std.string : format;
+import niknaks.debugging;
+
+// TODO: put in message
+private string obtainString(ubyte[] rem, ref size_t nxtIdx)
+{
+	// first two LE-encoded bytes are length
+	ubyte[] fstTwo = rem[0..2];
+	writeln(dumpArray!(fstTwo));
+	writeln(rem);
+	
+	ushort strSz = order(bytesToIntegral!(ushort)(rem), Order.LE);
+	writeln("strSz: ", strSz);
+
+	// obtain remainder (TODO: maybe do Result return in bad length case?)
+	ubyte[] str = rem[2..2+strSz];
+	nxtIdx = 2+strSz;
+
+	return cast(string)str;
+}
+
 
 // TODO: Move this into ninepee.message
 private bool buildMessage(State state, ref Message mOut)
@@ -92,24 +112,62 @@ private bool buildMessage(State state, ref Message mOut)
 
 
 	// Parse specific kind-of message
+	size_t nxtIdx;
+	bool goodMesg = false;
 	Message mesgO;
 	switch(type)
 	{
 		case MType.Tversion:
 		    // msize
 		    uint msize = order(bytesToIntegral!(uint)(state.payloadBytes[0..4]), Order.LE);
+
+
+			writeln(format("leftover food: %d", state.payloadBytes.length-4));
 		    
 		    // version
-		    string ver = cast(string)state.payloadBytes[4..$];
+		    string ver = obtainString(state.payloadBytes[4..$], nxtIdx);
+		    writeln("ver: ", ver);
 		    
-			mOut = VersionMessage_V2.makeRequest(msize, ver);
-			return true;
+			mesgO = VersionMessage_V2.makeRequest(msize, ver);
+			goodMesg = true;
+			break;
 		case MType.Rversion:
+			// TODO; Finish decode
 			writeln("fok");
 			break;
+		case MType.Tattach:
+			// fid
+			uint fid = order(bytesToIntegral!(uint)(state.payloadBytes[0..4]), Order.LE);
+
+			// afid
+			uint afid = order(bytesToIntegral!(uint)(state.payloadBytes[4..8]), Order.LE);
+
+			writeln(format("fid: %d", fid));
+			writeln(format("afid: %d", afid));
+
+			// uname
+			string uname = obtainString(state.payloadBytes[8..$], nxtIdx);
+
+			// aname
+			string aname = obtainString(state.payloadBytes[nxtIdx..$], nxtIdx);
+
+			
+			
+			break;
 		default:
-			writeln("No support for decoding message of type '%s'", type);
-			return false;
+			writeln(format("No support for decoding message of type '%s'", type));
+			goodMesg = false;
+	}
+
+	// finish up
+	if(goodMesg)
+	{
+		// Set tag
+		mesgO.setTag(tag);
+
+		mOut = mesgO;
+
+		return true;
 	}
 	
 	class TestMesg : Message
