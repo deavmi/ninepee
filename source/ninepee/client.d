@@ -68,14 +68,21 @@ private struct Buff
 }
 
 import niknaks.bits;
+import std.string : format;
 
+// TODO: Move this into ninepee.message
 private bool buildMessage(State state, ref Message mOut)
 {
 	// parse size (LE-encoded)
 	uint size = order(bytesToIntegral!(uint)(state.sizeBytes), Order.LE);
 	writeln("size: ", size);
 
-	// obtain type
+	// obtain type after validation check
+	if(!isValidType(state.typeByte))
+	{
+		writeln(format("Unsupported type byte '%d'", state.typeByte));
+		return false;
+	}
 	MType type = cast(MType)state.typeByte;
 	writeln("type: ", type);
 	
@@ -83,6 +90,21 @@ private bool buildMessage(State state, ref Message mOut)
 	Tag tag = order(bytesToIntegral!(Tag)(state.tagBytes), Order.LE);
 	writeln("tag: ", tag);
 
+
+	// Parse specific kind-of message
+	Message mesgO;
+	switch(type)
+	{
+		case MType.Tversion:
+			writeln("fok");
+			break;
+		case MType.Rversion:
+			writeln("fok");
+			break;
+		default:
+			writeln("No support for decoding message of type '%s'", type);
+			return false;
+	}
 	
 	class TestMesg : Message
 	{
@@ -160,6 +182,20 @@ private struct State
 			   isTagComplete();
 	}
 
+	bool hasPayloadSet = false;
+	ubyte[] payloadBytes;
+
+	public void setPayloadBytes(ubyte[] payloadBytes)
+	{
+		this.hasPayloadSet = true;
+		this.payloadBytes = payloadBytes;
+	}
+
+	public bool isPayloadComplete()
+	{
+		return this.hasPayloadSet;
+	}
+
 	public void reset()
 	{
 		this.hasSizeSet = false;
@@ -170,6 +206,9 @@ private struct State
 
 		this.hasTagSet = false;
 		this.tagBytes = [];
+
+		this.hasPayloadSet = false;
+		this.payloadBytes = [];
 	}
 }
 
@@ -315,6 +354,28 @@ public struct Client
 			}
 		}
 
+		// calculate the remaining bytes needed
+		uint payloadSz = order(bytesToIntegral!(uint)(state.sizeBytes), Order.LE)-(4+1+2);
+		writeln("payload bytes expected: ", payloadSz);
+
+		if(!state.isPayloadComplete())
+		{
+			// try to get `payloadSz` bytes
+			ubyte[] o;
+			size_t rem = this.buff.tryGet(payloadSz, o);
+
+			// then we got `payloadSz`-many bytes
+			if(rem == 0)
+			{
+				this.state.setPayloadBytes(o);
+			}
+			// else, not yet, return remaining bytes
+			else
+			{
+				return ParseResult(rem);
+			}
+		}
+
 		// FIXME: Add remaining decodes here
 
 		// TODO: Now take this.state and build message from it
@@ -364,8 +425,23 @@ version(unittest)
 	{
 		writeln("handleMessage: ", msg, " (size: ", msg.getPayloadSize(), ")");
 	}
+
+	// TOOD: make niknaks?
+	public ubyte[] fakeLoad(size_t sz, ubyte v)
+	{
+		ubyte[] b;
+		for(size_t i = 0; i < sz; i++)
+		{
+			b ~= v;
+		}
+		return b;
+	}
 }
 
+/**
+ * First test sets poyload size to 256-(4+1+2) bytes
+ * Second test sets payload size to 255-(4+1+2) bytes
+ */
 unittest
 {
 	Client c;
@@ -385,11 +461,17 @@ unittest
 	assert(res.getStatus() == ParseStatus.NEEDS_MORE_DATA);
 	assert(res.getRemaining() == 1);
 
-	res = c.recv([MType.Twrite]);
+	res = c.recv([MType.Tversion]);
 	assert(res.getStatus() == ParseStatus.NEEDS_MORE_DATA);
 	assert(res.getRemaining() == 2);
 	
 	res = c.recv([1,0]);
+	assert(res.getStatus() == ParseStatus.NEEDS_MORE_DATA);
+	assert(res.getRemaining() == 256-(4+1+2));
+
+	// construct payload with AAAAAA....
+	ubyte[] dummyPayload = fakeLoad(256-(4+1+2), 65);
+	res = c.recv(dummyPayload);
 	assert(res.getStatus() == ParseStatus.OKAY);
 	
 
@@ -397,7 +479,6 @@ unittest
 	assert(!(m_out is null));
 	writeln(m_out);
 	handler(m_out);
-	// asser
 
 
 	// Push data in (again)
@@ -413,17 +494,22 @@ unittest
 	assert(res.getStatus() == ParseStatus.NEEDS_MORE_DATA);
 	assert(res.getRemaining() == 1);
 
-	res = c.recv([MType.Rwrite]);
+	res = c.recv([MType.Rversion]);
 	assert(res.getStatus() == ParseStatus.NEEDS_MORE_DATA);
 	assert(res.getRemaining() == 2);
 
 	res = c.recv([2,0]);
+	assert(res.getStatus() == ParseStatus.NEEDS_MORE_DATA);
+	assert(res.getRemaining() == 255-(4+1+2));
+	
+	// construct payload with BBBBBBB...
+	dummyPayload = fakeLoad(256-(4+1+2), 66);
+	res = c.recv(dummyPayload);
 	assert(res.getStatus() == ParseStatus.OKAY);
+
 
 	m_out = res.getMessage();
 	assert(!(m_out is null));
 	writeln(m_out);
 	handler(m_out);
-
-	
 }

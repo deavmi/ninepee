@@ -10,6 +10,11 @@ public static bool isReply(MType type)
 	return !isRequest(type);
 }
 
+public bool isValidType(ubyte typeByte)
+{
+	return typeByte >= MType.Tversion && typeByte <= MType.Rwrite;
+}
+
 public enum MType : ubyte
 {
 	Tversion = 100,
