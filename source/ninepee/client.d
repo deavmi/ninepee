@@ -96,8 +96,14 @@ private bool buildMessage(State state, ref Message mOut)
 	switch(type)
 	{
 		case MType.Tversion:
-			writeln("fok");
-			break;
+		    // msize
+		    uint msize = order(bytesToIntegral!(uint)(state.payloadBytes[0..4]), Order.LE);
+		    
+		    // version
+		    string ver = cast(string)state.payloadBytes[4..$];
+		    
+			mOut = VersionMessage_V2.makeRequest(msize, ver);
+			return true;
 		case MType.Rversion:
 			writeln("fok");
 			break;
@@ -179,7 +185,8 @@ private struct State
 	{
 		return isSizeComplete() &&
 			   isTypeComplete() &&
-			   isTagComplete();
+			   isTagComplete() &&
+			   isPayloadComplete();
 	}
 
 	bool hasPayloadSet = false;
@@ -233,8 +240,8 @@ public struct ParseResult
 	private ParseStatus status;
 	private Obj obj;
 
-	@disable
-	this();
+	// @disable
+	// this();
 
 	this(size_t remaining)
 	{
