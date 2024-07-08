@@ -79,7 +79,9 @@ private bool buildMessage(State state, ref Message mOut)
 	MType type = cast(MType)state.typeByte;
 	writeln("type: ", type);
 	
-
+	// obtain tag
+	Tag tag = order(bytesToIntegral!(Tag)(state.tagBytes), Order.LE);
+	writeln("tag: ", tag);
 
 	
 	class TestMesg : Message
