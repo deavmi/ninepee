@@ -49,6 +49,16 @@ public enum MType : ubyte
 
 import niknaks.bits;
 
+public bool is_NOTAG(Tag tag)
+{
+	return cast(short)tag == -1;
+}
+
+unittest
+{
+	assert(is_NOTAG(cast(Tag)-1));
+}
+
 public abstract class Message
 {
 	private MType type;
@@ -156,6 +166,28 @@ public class VersionMessage_V2 : Message
 		o ~= ver;
 
 		return o;
+	}
+
+	public override string toString()
+	{
+		if(getType() == MType.Tversion)
+		{
+			return format
+			(
+				"VersionRequest [msize: %d, verWanted: %s]",
+				this.msize,
+				this.ver
+			);
+		}
+		else
+		{
+			return format
+			(
+				"VersionReply [msize: %d, verAble: %s]",
+				this.msize,
+				this.ver
+			);
+		}
 	}
 }
 
