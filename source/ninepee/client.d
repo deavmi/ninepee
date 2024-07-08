@@ -73,8 +73,15 @@ private bool buildMessage(State state, ref Message mOut)
 {
 	// parse size (LE-encoded)
 	uint size = order(bytesToIntegral!(uint)(state.sizeBytes), Order.LE);
+	writeln("size: ", size);
+
+	// obtain type
+	MType type = cast(MType)state.typeByte;
+	writeln("type: ", type);
+	
 
 
+	
 	class TestMesg : Message
 	{
 		private ubyte[] big;
@@ -130,9 +137,25 @@ private struct State
 		return this.hasTypeSet;
 	}
 
+	bool hasTagSet = false;
+	ubyte[] tagBytes;
+
+	public void setTagBytes(ubyte[] tagBytes)
+	{
+		this.hasTagSet = true;
+		this.tagBytes = tagBytes;
+	}
+
+	public bool isTagComplete()
+	{
+		return this.hasTagSet;
+	}
+
 	public bool isDone()
 	{
-		return isSizeComplete && isTypeComplete();
+		return isSizeComplete() &&
+			   isTypeComplete() &&
+			   isTagComplete();
 	}
 
 	public void reset()
@@ -142,6 +165,9 @@ private struct State
 
 		this.hasTypeSet = false;
 		this.typeByte = 0;
+
+		this.hasTagSet = false;
+		this.tagBytes = [];
 	}
 }
 
@@ -268,6 +294,25 @@ public struct Client
 			}
 		}
 
+		// do we have tag fulfilled?
+		if(!state.isTagComplete())
+		{
+			// try to get a two bytes
+			ubyte[] o;
+			size_t rem = this.buff.tryGet(2, o);
+
+			// then we got 2 byte, and can set it
+			if(rem == 0)
+			{
+				this.state.setTagBytes(o);
+			}
+			// else, not yet, return remaining bytes
+			else
+			{
+				return ParseResult(rem);
+			}
+		}
+
 		// FIXME: Add remaining decodes here
 
 		// TODO: Now take this.state and build message from it
@@ -339,7 +384,12 @@ unittest
 	assert(res.getRemaining() == 1);
 
 	res = c.recv([MType.Twrite]);
+	assert(res.getStatus() == ParseStatus.NEEDS_MORE_DATA);
+	assert(res.getRemaining() == 2);
+	
+	res = c.recv([1,0]);
 	assert(res.getStatus() == ParseStatus.OKAY);
+	
 
 	Message m_out = res.getMessage();
 	assert(!(m_out is null));
@@ -362,17 +412,16 @@ unittest
 	assert(res.getRemaining() == 1);
 
 	res = c.recv([MType.Rwrite]);
+	assert(res.getStatus() == ParseStatus.NEEDS_MORE_DATA);
+	assert(res.getRemaining() == 2);
+
+	res = c.recv([2,0]);
 	assert(res.getStatus() == ParseStatus.OKAY);
 
 	m_out = res.getMessage();
 	assert(!(m_out is null));
 	writeln(m_out);
 	handler(m_out);
-
-	// assert(c.recv([]) == 4);
-	// assert(c.recv([255]) == 3);
-	// assert(c.recv([0,0,0]) == 1);
-	// assert(c.recv([MType.Rwrite]) == 0);
 
 	
 }
