@@ -79,6 +79,11 @@ public struct RemoteClient
 
 	private bool isFidAvailable(Fid wanted)
 	{
+		writeln("naai");
+		scope(exit)
+		{
+			writeln("naai exit");
+		}
 		// FidRecords are comparable by their Fids
 		return !isPresent(this.opened, FidRecord(wanted));
 	}
@@ -147,17 +152,19 @@ public struct RemoteClient
 		{
 			dbg();
 
+			writeln("loop: read wait");
 			if(!doRead(m))
 			{
 				// TODO: parse error may NOT be fata;
 				writeln("reading failed, either transport is bad or parse error");
 				break;
 			}
+			writeln("loop: read done");
 			
 			// if you are attached
 			if(isAttached)
 			{
-				
+				writeln("Hi");
 			}
 			// if unattached
 			else
@@ -187,6 +194,7 @@ public struct RemoteClient
 					}
 
 					// now request server lookup (TODO: handle res)
+					writeln("s: ", s);
 					Qid qid;
 					auto res = s.attach0(am.getUser(), am.getFileTree(), qid);
 					writeln("attachmet res: ", res);
@@ -195,6 +203,10 @@ public struct RemoteClient
 						FidRecord fidRec = Fid(fidReq);
 						addFid(fidRec);
 						AttachMessage r = AttachMessage.makeReply(qid);
+						r.setTag(am.getTag());
+						toClient(r);
+						isAttached = true;
+						writeln("n");
 					}
 					else
 					{
@@ -211,6 +223,11 @@ public struct RemoteClient
 		writeln("loop end");
 	}
 
+	private void toClient(Message m)
+	{
+		io.write(m.encode());
+	}
+	
 	private void errToClient(Tag tag, string s)
 	{
 		writeln(s);
@@ -292,7 +309,8 @@ public interface Auth
 
 private Qid bogusQid()
 {
-	
+	Qid q = Qid(Qid_type.FILE, 0, cast(Qid_path)"12345678");
+	return q;
 }
 
 public class Server
@@ -337,9 +355,10 @@ public class Server
 	// TODO: use result type rather
 	public bool attach0(string uname, string aname, ref Qid qid)
 	{
-		writeln(format("User %s is requesting access to file tree '%aname'", uname, aname));
+		writeln(format("User %s is requesting access to file tree '%s'", uname, aname));
 
 		// TODO: Generate a unique qid shits
+		qid = bogusQid();
 
 		return true;
 	}
@@ -397,10 +416,12 @@ public class TCPIO : RemoteEndpoint
 unittest
 {
 	Socket serv = new Socket(AddressFamily.INET, SocketType.STREAM, ProtocolType.TCP);
-	serv.bind(parseAddress("127.0.0.1", 2222));
+	serv.bind(parseAddress("127.0.0.1", 0));
 	serv.listen(0);
 
 	Tag tagToUse;
+
+	writeln("PORT IS: ", serv.localAddress());
 
 	Socket client = serv.accept();
 
@@ -414,6 +435,7 @@ unittest
 		writeln("hi");
 	}
 
+	
 	Server s = new Server();
 	RemoteClient cn = RemoteClient(s, new TCPIO(client));
 

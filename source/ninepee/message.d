@@ -14,7 +14,7 @@ public static bool isReply(MType type)
 
 public bool isValidType(ubyte typeByte)
 {
-	return typeByte >= MType.Tversion && typeByte <= MType.Rwrite;
+	return typeByte >= MType.Tversion && typeByte <= MType.Rwstat;
 }
 
 public enum MType : ubyte
@@ -124,7 +124,7 @@ public abstract class Message
 
 		// tack on the sub-message
 		o ~= sub;
-		
+
 		writeln(format("Byte output for (%s):\n%s", this, dumpArray!(o)));
 		
 		return o;
@@ -250,13 +250,16 @@ unittest
 enum Qid_type : ubyte
 {
 	// TODO: Fill me in
-	DMDIR = 0x80,
-	DMAPPEND = 0x40,
-	DMEXCL = 0x20,
-	DMTMP = 0x04
+	DIR = 0x80,
+	APPEND = 0x40,
+	EXCL = 0x20,
+	MOUNT = 0x10,
+	AUTH = 0x08,
+	DMTMP = 0x04,
+	FILE = 0x00
 }
 alias Qid_vers = uint;
-alias Qid_path = ulong;
+alias Qid_path = ubyte[8];
 
 public struct Qid
 {
@@ -296,7 +299,9 @@ public struct Qid
 		// add version (LE-encoded integer)
 		o ~= toBytes(order(v, Order.LE));
 
-		// add 
+		// add path
+		o ~= p;
+
 		return o;
 	}
 }
@@ -400,7 +405,7 @@ public final class AttachMessage : Message
 		{
 			s = format
 			(
-				"AttachMessage [qid: %d]",
+				"AttachMessage [qid: %s]",
 				this.qid
 			);
 		}
