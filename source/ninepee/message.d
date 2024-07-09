@@ -25,7 +25,7 @@ public enum MType : ubyte
 	Rauth = 103,
 	Tattach = 104,
 	Rattach = 105,
-	Terror = 106,
+	Terror = 106, // not a real thing
 	Rerror = 107,
 	Tflush = 108,
 	Rflush = 109,
@@ -246,6 +246,61 @@ unittest
 	ubyte[] o = msg.encode();
 }
 
+
+enum Qid_type : ubyte
+{
+	// TODO: Fill me in
+	DMDIR = 0x80,
+	DMAPPEND = 0x40,
+	DMEXCL = 0x20,
+	DMTMP = 0x04
+}
+alias Qid_vers = uint;
+alias Qid_path = ulong;
+
+public struct Qid
+{
+	private Qid_type t;
+	private Qid_vers v;
+	private Qid_path p;
+	
+	this
+	(
+		Qid_type t,
+		Qid_vers v,
+		Qid_path p
+	)
+	{
+		this.t = t;
+		this.v = v;
+		this.p = p;
+	}
+	
+	public static Qid fromBytes(ubyte[] qb)
+	{
+		return Qid();
+	}
+
+	public ubyte[] opCast(T: ubyte[])()
+	{
+		return encode();
+	}
+
+	private ubyte[] encode()
+	{
+		ubyte[] o;
+
+		// add type
+		o ~= t;
+
+		// add version (LE-encoded integer)
+		o ~= toBytes(order(v, Order.LE));
+
+		// add 
+		return o;
+	}
+}
+
 public final class AttachMessage : Message
 {
 	// T: fid, afid
@@ -255,7 +310,7 @@ public final class AttachMessage : Message
 	private string uname, aname;
 
 	// R: qid
-	private uint qid;
+	private Qid qid;
 
 	private this(MType type)
 	{
@@ -272,7 +327,7 @@ public final class AttachMessage : Message
 		return m;
 	}
 
-	public static AttachMessage makeReply(uint qid)
+	public static AttachMessage makeReply(Qid qid)
 	{
 		AttachMessage m = new AttachMessage(MType.Rattach);
 		m.qid = qid;
@@ -291,22 +346,107 @@ public final class AttachMessage : Message
 			// ensure LE ordering and tack on to byte array
 			o ~= toBytes(order(this.afid, Order.LE));
 						
-			// ensure LE ordering and tack on to byte array
+			// convert to 9P string format and tack on to byte array
 			o ~= make9PString(this.uname);
 			
-			// ensure LE ordering and tack on to byte array
+			// convert to 9P string format and tack on to byte array
 			o ~= make9PString(this.aname);
 		}
 		else
 		{
-			// ensure LE ordering and tack on to byte array
-			o ~= toBytes(order(this.qid, Order.LE));
+			// encode Qid and tack on to byte array
+			o ~= cast(ubyte[])this.qid;
 		}
 
 		return o;
 	}
+
+	public bool wantsAuth()
+	{
+		return this.afid != NOFID;
+	}
+
+	public Fid getFid()
+	{
+		return this.fid;
+	}
+
+	public string getUser()
+	{
+		return this.uname;
+	}
+
+	public string getFileTree()
+	{
+		return this.aname;
+	}
+
+	public override string toString()
+	{
+		string s;
+
+		if(getType() == MType.Tattach)
+		{
+			s = format
+			(
+				"AttachMessage [fid: %s, afid: %s, uname: %s, aname: %s]",
+				this.fid,
+				!wantsAuth() ? "NOFID" : to!(string)(this.afid),
+				this.uname,
+				this.aname
+			);
+		}
+		else
+		{
+			s = format
+			(
+				"AttachMessage [qid: %d]",
+				this.qid
+			);
+		}
+		
+		return super.toString()~" "~s;
+	}
 }
 
+// Only servers can make error (Terror is not a real thing)
+public final class ErrorMessage : Message
+{
+	private string error;
+	
+	private this(Tag tag)
+	{
+		super(MType.Rerror);
+		setTag(tag);
+	}
+
+	public static ErrorMessage errorFor(Tag tag, string error)
+	{
+		ErrorMessage e = new ErrorMessage(tag);
+		e.setError(error);
+		return e;
+	}
+
+	public string getError()
+	{
+		return this.error;
+	}
+
+	public void setError(string error)
+	{
+		this.error = error;
+	}
+
+	public override ubyte[] getPayload()
+	{
+		ubyte[] o;
+		
+		// add error message
+		o ~= make9PString(error);
+		
+		return o;
+	}
+}
 public struct VersionMessage
 {
 	// true if Tversion, false if Rversion

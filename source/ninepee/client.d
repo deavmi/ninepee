@@ -149,10 +149,13 @@ private bool buildMessage(State state, ref Message mOut)
 			string uname = obtainString(state.payloadBytes[8..$], nxtIdx);
 
 			// aname
-			string aname = obtainString(state.payloadBytes[nxtIdx..$], nxtIdx);
+			string aname = obtainString(state.payloadBytes[8+nxtIdx..$], nxtIdx);
 
-			
-			
+			writeln(format("uname: %s", uname));
+			writeln(format("aname: %s", aname));
+
+			mesgO = AttachMessage.makeRequest(fid, afid, uname, aname);
+			goodMesg = true;
 			break;
 		default:
 			writeln(format("No support for decoding message of type '%s'", type));
