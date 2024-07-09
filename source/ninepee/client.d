@@ -71,24 +71,6 @@ import niknaks.bits;
 import std.string : format;
 import niknaks.debugging;
 
-// TODO: put in message
-private string obtainString(ubyte[] rem, ref size_t nxtIdx)
-{
-	// first two LE-encoded bytes are length
-	ubyte[] fstTwo = rem[0..2];
-	writeln(dumpArray!(fstTwo));
-	writeln(rem);
-	
-	ushort strSz = order(bytesToIntegral!(ushort)(rem), Order.LE);
-	writeln("strSz: ", strSz);
-
-	// obtain remainder (TODO: maybe do Result return in bad length case?)
-	ubyte[] str = rem[2..2+strSz];
-	nxtIdx = 2+strSz;
-
-	return cast(string)str;
-}
-
 
 // TODO: Move this into ninepee.message
 private bool buildMessage(State state, ref Message mOut)

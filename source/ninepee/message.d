@@ -84,6 +84,23 @@ public ubyte[] make9PString(string dString)
 	return o;
 }
 
+public string obtainString(ubyte[] rem, ref size_t nxtIdx)
+{
+	// first two LE-encoded bytes are length
+	ubyte[] fstTwo = rem[0..2];
+	writeln(dumpArray!(fstTwo));
+	writeln(rem);
+	
+	ushort strSz = order(bytesToIntegral!(ushort)(rem), Order.LE);
+	writeln("strSz: ", strSz);
+
+	// obtain remainder (TODO: maybe do Result return in bad length case?)
+	ubyte[] str = rem[2..2+strSz];
+	nxtIdx = 2+strSz;
+
+	return cast(string)str;
+}
+
 public abstract class Message
 {
 	private MType type;
@@ -157,6 +174,84 @@ public abstract class Message
 			this.type,
 			is_NOTAG(this.tag) ? "NOTAG" : to!(string)(this.tag)
 		);
+	}
+}
+
+alias gs = GString;
+alias GString = GlendaString;
+public struct GlendaString
+{
+	// D string
+	private string dStr;
+	
+	@disable
+	this();
+
+	this(string dStr)
+	{
+		setString(dStr);
+	}
+
+
+	// TODO: Return Result for decode error
+	public static GlendaString decode(ubyte[] gsBytes)
+	{
+		return this(obtainString(gsBytes));
+	}
+
+	public void setString(string dStr)
+	{
+		this.dStr = dStr;
+	}
+
+	public string getString()
+	{
+		return dStr;
+	}
+
+	public ubyte[] opCast(T: ubyte[])()
+	{
+		return fromDTo9P(this.dStr);
+	}
+
+	private static ubyte[] fromDTo9P(string s)
+	{
+		return make9PString(s);
+	}
+}
+
+
+public struct Stat
+{
+	ushort size;
+	ushort type;
+	ushort dev;
+	Qid qid;
+	Mode mode;
+	FileTime atime;
+	FileTime mtime;
+	ulong fileLen;
+	string name; // remembet to 9string-atize
+	string uid; // remembet to 9string-atize
+	string gid; // remembet to 9string-atize
+}
+
+public class StatMessage : Message
+{
+	// T: fid
+	private Fid fid;
+
+	// R: stat
+	private Stat s;
+	
+	private this(MType type)
+	{
+		super(type);
+	}
+
+	public static StatMessage makeRequest(Fid fid)
+	{
+		
 	}
 }
 
