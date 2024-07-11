@@ -46,11 +46,12 @@ private struct FidRecord
 
 	public Fid fid()
 	{
-		return this.fid;
+		return this.f;
 	}
 
 	public bool opEquals(FidRecord rhs)
 	{
+		writeln(format("this: %s, rhs: %s", this, rhs));
 		return this.fid == rhs.fid();
 	}
 }
@@ -86,11 +87,27 @@ public struct RemoteClient
 		}
 		// FidRecords are comparable by their Fids
 		return !isPresent(this.opened, FidRecord(wanted));
+		// return true;
 	}
 
 	private void addFid(FidRecord f)
 	{
 		this.opened ~= f;
+	}
+	
+	private bool clunk(Fid fid)
+	{
+		writeln("CCCLUNKY CRUNKY");
+		if(isFidAvailable(fid))
+		{
+			writeln("Wait");
+			writeln(format("Cannot clunl fid %s as it is not inuse", fid));
+			return false;
+		}
+
+		// TODO: Do a check here for if the file was opened with ORCLOSE
+		// ... if NOT then don't remove file?
+		return true;
 	}
 
 	private bool handshake()
@@ -164,7 +181,36 @@ public struct RemoteClient
 			// if you are attached
 			if(isAttached)
 			{
-				writeln("Hi");
+				if(m.getType() == MType.Tstat)
+				{
+					StatMessage s = cast(StatMessage)m;
+					writeln("CRASH CART STAT!: ", s);
+					writeln();
+
+					// TODO: Do stat via Server here
+					Stat sr;
+
+					// Send reply of stat
+					StatMessage rs = StatMessage.makeReply(sr);
+					toClient(rs);
+				}
+				else if(m.getType() == MType.Tclunk)
+				{
+					ClunkMessage c = cast(ClunkMessage)m;
+					Fid fidToClunk = c.getFid();
+					
+					// TODO: Get clearer errors from clunk(Fid) when it fails
+					if(clunk(fidToClunk))
+					{
+						ClunkMessage cr = ClunkMessage.makeReply();
+						cr.setTag(c.getTag());
+						toClient(cr);
+					}
+					else
+					{
+						errToClient(m.getTag(), format("Failed to clunk fid %d", fidToClunk));
+					}
+				}
 			}
 			// if unattached
 			else

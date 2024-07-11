@@ -177,15 +177,14 @@ public abstract class Message
 	}
 }
 
+alias GS = GStr;
+alias GStr = gs;
 alias gs = GString;
 alias GString = GlendaString;
 public struct GlendaString
 {
 	// D string
 	private string dStr;
-	
-	@disable
-	this();
 
 	this(string dStr)
 	{
@@ -196,7 +195,8 @@ public struct GlendaString
 	// TODO: Return Result for decode error
 	public static GlendaString decode(ubyte[] gsBytes)
 	{
-		return this(obtainString(gsBytes));
+		ulong trash;
+		return GlendaString(obtainString(gsBytes, trash));
 	}
 
 	public void setString(string dStr)
@@ -218,12 +218,116 @@ public struct GlendaString
 	{
 		return make9PString(s);
 	}
+
+	public void opAssign(string dStr)
+	{
+		setString(dStr);
+	}
+
+	public void opOpAssign(string op: "~")(string dStr)
+	{
+		this.dStr~=dStr;
+	}
+
+	public bool opEquals(GlendaString rhs)
+	{
+		return this.dStr == rhs.getString();
+	}
 }
 
 
+unittest
+{
+	auto gStr1 = gs("A");
+	gStr1 = "AB";
+	gStr1 ~= "BA";
+
+	ubyte[] o = cast(ubyte[])gStr1;
+	assert(o == [4,0,65,66,66,65]);
+
+	auto gStr2 = gs.decode(o);
+	assert(gStr1 == gStr2);
+}
+
+
+public final class ClunkMessage : Message
+{
+	// T: fid
+	private Fid fid;
+
+	private this(MType type)
+	{
+		super(type);
+	}
+
+	public static ClunkMessage makeRequest(Fid fid)
+	{
+		ClunkMessage c = new ClunkMessage(MType.Tclunk);
+		c.fid = fid;
+		return c;
+	}
+
+	public static ClunkMessage makeReply()
+	{
+		ClunkMessage c = new ClunkMessage(MType.Rclunk);
+		return c;
+	}
+
+	public Fid getFid()
+	{
+		return this.fid;
+	}
+
+	public override ubyte[] getPayload()
+	{
+		ubyte[] o;
+		
+		// T: clunk request
+		if(getType() == MType.Tclunk)
+		{
+			// tack on fid (LE encoded integral)
+			o ~= toBytes(order(this.fid, Order.LE));
+		}
+		// R: clunk reply
+		else
+		{
+			// niks
+		}
+
+		return o;
+	}
+
+	public override string toString()
+	{
+		string s;
+		if(getType() == MType.Tclunk)
+		{
+			s=format
+			(
+				"ClunkMessage [fid: %d]",
+				this.fid
+			);
+		}
+		else
+		{
+			s=format
+			(
+				"ClunkMessage [reply]",
+			);
+		}
+
+		return super.toString()~" "~s;
+	}
+}
+
+// TODO: For now, later make it a struct type with cast(ubyte[]) ability
+alias Mode = uint;
+// TODO: For now, later make it a struct type with cast(ubyte[]) ability
+alias FileTime = uint;
+
 public struct Stat
 {
-	ushort size;
+	private ushort size;
 	ushort type;
 	ushort dev;
 	Qid qid;
@@ -231,9 +335,37 @@ public struct Stat
 	FileTime atime;
 	FileTime mtime;
 	ulong fileLen;
-	string name; // remembet to 9string-atize
-	string uid; // remembet to 9string-atize
-	string gid; // remembet to 9string-atize
+	GStr name; // remembet to 9string-atize
+	GStr uid; // remembet to 9string-atize
+	GStr gid; // remembet to 9string-atize
+	GStr lastModifiedBy; // remembet to 9string-atize
+
+	public ubyte[] opCast(T: ubyte[])()
+	{
+		ubyte[] o;
+
+		o ~= toBytes(order(type, Order.LE));
+		o ~= toBytes(order(dev, Order.LE));
+
+		o ~= cast(ubyte[])qid;
+
+		o ~= toBytes(order(mode, Order.LE));
+		o ~= toBytes(order(atime, Order.LE));
+		o ~= toBytes(order(mtime, Order.LE));
+		o ~= toBytes(order(fileLen, Order.LE));
+		
+		// tack on name, uid and gid
+		o ~= cast(ubyte[])name;
+		o ~= cast(ubyte[])uid;
+		o ~= cast(ubyte[])gid;
+		o ~= cast(ubyte[])lastModifiedBy;
+
+		// calculate size and place at head
+		ushort size = cast(ushort)o.length;
+		o = toBytes(order(size, Order.LE))~o;
+
+		return o;
+	}
 }
 
 public class StatMessage : Message
@@ -251,7 +383,59 @@ public class StatMessage : Message
 
 	public static StatMessage makeRequest(Fid fid)
 	{
+		StatMessage s = new StatMessage(MType.Tstat);
+		s.fid = fid;
+		return s;
+	}
+
+	public static StatMessage makeReply(Stat st)
+	{
+		StatMessage s = new StatMessage(MType.Rstat);
+		s.s = st;
+		return s;
+	}
+
+	public override ubyte[] getPayload()
+	{
+		ubyte[] o;
 		
+		// T: stat request
+		if(getType() == MType.Tstat)
+		{
+			// tack on fid (LE encoded integral)
+			o ~= toBytes(order(this.fid, Order.LE));
+		}
+		// R: stat reply
+		else
+		{
+			// tack on stat
+			o ~= cast(ubyte[])this.s;
+		}
+
+		return o;
+	}
+
+	public override string toString()
+	{
+		string s;
+		if(getType() == MType.Tstat)
+		{
+			s=format
+			(
+				"StatMessage [fid: %d]",
+				this.fid
+			);
+		}
+		else
+		{
+			s=format
+			(
+				"StatMessage [stat: %s]",
+				this.s
+			);
+		}
+
+		return super.toString()~" "~s;
 	}
 }
 

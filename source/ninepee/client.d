@@ -139,6 +139,20 @@ private bool buildMessage(State state, ref Message mOut)
 			mesgO = AttachMessage.makeRequest(fid, afid, uname, aname);
 			goodMesg = true;
 			break;
+		case MType.Tstat:
+			// fid
+			uint fid = order(bytesToIntegral!(uint)(state.payloadBytes[0..4]), Order.LE);
+
+			mesgO = StatMessage.makeRequest(fid);
+			goodMesg = true;
+			break;
+		case MType.Tclunk:
+			// fid
+			uint fid = order(bytesToIntegral!(uint)(state.payloadBytes[0..4]), Order.LE);
+
+			mesgO = ClunkMessage.makeRequest(fid);
+			goodMesg = true;
+			break;
 		default:
 			writeln(format("No support for decoding message of type '%s'", type));
 			goodMesg = false;
@@ -155,28 +169,8 @@ private bool buildMessage(State state, ref Message mOut)
 		return true;
 	}
 	
-	class TestMesg : Message
-	{
-		private ubyte[] big;
-		this(size_t amount)
-		{
-			super(MType.Twrite);
 
-			for(size_t s = 0; s < amount; s++)
-			{
-				big ~= 0;
-			}
-		}
-
-		override ubyte[] getPayload()
-		{
-			return this.big;
-		}
-	}
-	// TODO: Actually parse shit
-	mOut = new TestMesg(size);
-
-	return true;
+	return false;
 	
 }
 
